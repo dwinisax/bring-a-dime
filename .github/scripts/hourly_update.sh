@@ -25,7 +25,7 @@ if [ -s "$CACHE_FILE" ] && [ $(( now_epoch - last_epoch )) -lt "$TTL_SECONDS" ];
 fi
 
 fetch_zenquotes() {
-  curl -fsSL --retry 3 --retry-delay 2 --max-time 20 \
+  curl -fsSL --retry 1 --retry-delay 1 --max-time 8 \
     "https://zenquotes.io/api/random" \
   | python3 - <<'PY'
 import json,sys
@@ -52,12 +52,9 @@ if [ "$need_refresh" -eq 1 ]; then
   tmp="$CACHE_FILE.tmp"
   > "$tmp"
 
-  for _ in $(seq 1 50); do
+  for _ in $(seq 1 10); do
     line=""
-    if line="$(fetch_quotable 2>/dev/null)"; then true; else line=""; fi
-    if [ -z "$line" ]; then
-      if line="$(fetch_zenquotes 2>/dev/null)"; then true; else line=""; fi
-    fi
+    if line="$(fetch_zenquotes 2>/dev/null)"; then true; else line=""; fi
     [ -n "$line" ] && echo "$line" >> "$tmp"
   done
 
@@ -68,8 +65,6 @@ if [ "$need_refresh" -eq 1 ]; then
     echo "WARN: cache refresh failed; keep existing cache."
     rm -f "$tmp" || true
   fi
-else
-  echo "Using cached quotes."
 fi
 
 QUOTE_LINE="Keep going. — Unknown"
