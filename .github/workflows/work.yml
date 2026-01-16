@@ -2,7 +2,7 @@ name: Hourly random update
 
 on:
   schedule:
-    - cron: "0 * * * *"   # tiap jam (UTC)
+    - cron: "0 * * * *"
   workflow_dispatch:
 
 permissions:
@@ -20,101 +20,15 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Cache quotes (refresh daily) + random update (emoji + quotes)
-        shell: bash
+      - name: Run updater
         run: |
-          set -euo pipefail
-
-          TS="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
-          RAND="$(openssl rand -hex 4)"
-
-          EMOJIS=("✨" "🔥" "🌿" "⚡" "🌙" "🧠" "🛠️" "📌" "🎲" "🚀" "💡" "🧩" "🍀" "🎯" "🕰️")
-
-          pick_emoji() {
-            local idx=$(( RANDOM % ${#EMOJIS[@]} ))
-            printf "%s" "${EMOJIS[$idx]}"
-          }
-
-          # --- Quote cache (in repo) ---
-          CACHE_DIR=".cache"
-          CACHE_FILE="$CACHE_DIR/quotable_cache.json"
-          META_FILE="$CACHE_DIR/quotable_cache_meta.txt"
-          TTL_SECONDS=$(( 24 * 60 * 60 ))  # refresh 1x per 24 jam
-
-          mkdir -p "$CACHE_DIR"
-
-          now_epoch="$(date -u +%s)"
-          last_epoch="0"
-          if [ -f "$META_FILE" ]; then
-            last_epoch="$(cat "$META_FILE" 2>/dev/null || echo 0)"
-          fi
-
-          need_refresh=1
-          if [ -f "$CACHE_FILE" ] && [ $(( now_epoch - last_epoch )) -lt "$TTL_SECONDS" ]; then
-            need_refresh=0
-          fi
-
-          # Refresh cache: ambil 50 quotes sekaligus (biar hemat request)
-          # Endpoint resmi: https://api.quotable.io/quotes/random?limit=...
-          if [ "$need_refresh" -eq 1 ]; then
-            echo "Refreshing quote cache..."
-            if curl -fsSL "https://api.quotable.io/quotes/random?limit=50" -o "$CACHE_FILE.tmp"; then
-              mv "$CACHE_FILE.tmp" "$CACHE_FILE"
-              echo "$now_epoch" > "$META_FILE"
-            else
-              echo "WARN: failed to refresh cache, will use existing cache if available."
-              rm -f "$CACHE_FILE.tmp" || true
-            fi
-          else
-            echo "Using cached quotes."
-          fi
-
-          # Pick quote from cache (fallback kalau cache kosong/gagal)
-          QUOTE_TEXT="Keep going."
-          QUOTE_AUTHOR="Unknown"
-
-          if command -v jq >/dev/null 2>&1 && [ -f "$CACHE_FILE" ]; then
-            # pilih random item dari array JSON
-            # format item: { content, author, ... } (Quotable)
-            idx="$(jq 'length' "$CACHE_FILE" 2>/dev/null || echo 0)"
-            if [ "$idx" -gt 0 ]; then
-              r="$(( RANDOM % idx ))"
-              QUOTE_TEXT="$(jq -r ".[$r].content // \"Keep going.\"" "$CACHE_FILE")"
-              QUOTE_AUTHOR="$(jq -r ".[$r].author // \"Unknown\"" "$CACHE_FILE")"
-            fi
-          fi
-
-          EMOJI_README="$(pick_emoji)"
-          EMOJI_TUGAS="$(pick_emoji)"
-
-          # README.md: bikin base kalau belum ada
-          if [ ! -f README.md ]; then
-            cat > README.md <<'EOF'
-          # Auto Update Repo
-
-          Repo ini auto update tiap 1 jam via GitHub Actions.
-          EOF
-          fi
-
-          {
-            echo ""
-            echo "## Log"
-            echo "- $EMOJI_README **$TS** — \`$RAND\`"
-            echo "  > \"$QUOTE_TEXT\" — *$QUOTE_AUTHOR*"
-          } >> README.md
-
-          # tugas.txt
-          if [ ! -f tugas.txt ]; then
-            echo "tugas:" > tugas.txt
-          fi
-          echo "$EMOJI_TUGAS $TS | tugas-random-$RAND | \"$QUOTE_TEXT\" — $QUOTE_AUTHOR" >> tugas.txt
+          bash .github/scripts/hourly_update.sh
 
       - name: Commit & push (random message)
-        shell: bash
         run: |
           set -euo pipefail
 
-          git add README.md tugas.txt .cache/quotable_cache.json .cache/quotable_cache_meta.txt
+          git add README.md tugas.txt .cache
 
           if git diff --cached --quiet; then
             echo "No changes to commit."
@@ -136,10 +50,8 @@ jobs:
 
           idx=$(( RANDOM % ${#MESSAGES[@]} ))
           BASE="${MESSAGES[$idx]}"
+          RHEX="$(openssl rand -hex 3)"
+          DTS="$(date -u '+%Y-%m-%d %H:%M UTC')"
 
-          # biar hampir pasti unik tiap commit
-          RAND="$(openssl rand -hex 3)"
-          TS="$(date -u '+%Y-%m-%d %H:%M UTC')"
-
-          git commit -m "$BASE ✨ [$TS] {$RAND}"
+          git commit -m "$BASE ✨ [$DTS] {$RHEX}"
           git push
