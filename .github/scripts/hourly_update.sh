@@ -25,28 +25,17 @@ if [ -s "$CACHE_FILE" ] && [ $(( now_epoch - last_epoch )) -lt "$TTL_SECONDS" ];
 fi
 
 fetch_zenquotes() {
-  curl -fsSL --retry 1 --retry-delay 1 --max-time 8 \
-    "https://zenquotes.io/api/random" \
-  | python3 - <<'PY'
-import json,sys
-data=json.load(sys.stdin)[0]
-q=(data.get("q","")).strip()
-a=(data.get("a","Unknown")).strip()
-print(f"{q} — {a}")
-PY
+  local resp
+  resp="$(curl -fsSL --retry 1 --retry-delay 1 --max-time 8 \
+    "https://zenquotes.io/api/random" || true)"
+
+  # ZenQuotes normalnya: [ {"q":"...","a":"...","h":"..."} ]
+  # jq -r bikin output plain text; fallback kalau parsing gagal
+  echo "$resp" | jq -r '.[0] | "\(.q // "Keep going.") — \(.a // "Unknown")"' 2>/dev/null \
+    || echo "Keep going. — Unknown"
 }
 
-fetch_quotable() {
-  # Quotable sering error SSL (cert expired). Ini cuma "try".
-  curl -fsSL --retry 2 --retry-delay 2 --max-time 15 \
-    "https://api.quotable.io/random" \
-  | python3 - <<'PY'
-import json,sys
-d=json.load(sys.stdin)
-print(f"{d.get('content','').strip()} — {d.get('author','Unknown').strip()}")
-PY
-}
-
+# refresh cache (lebih cepat: isi 10 quotes aja)
 if [ "$need_refresh" -eq 1 ]; then
   echo "Refreshing quote cache..."
   tmp="$CACHE_FILE.tmp"
@@ -65,6 +54,8 @@ if [ "$need_refresh" -eq 1 ]; then
     echo "WARN: cache refresh failed; keep existing cache."
     rm -f "$tmp" || true
   fi
+else
+  echo "Using cached quotes."
 fi
 
 QUOTE_LINE="Keep going. — Unknown"
@@ -75,21 +66,27 @@ fi
 EMOJI_README="$(pick_emoji)"
 EMOJI_TUGAS="$(pick_emoji)"
 
+# --- README.md: header cuma sekali, log selalu append ---
 if [ ! -f README.md ]; then
   cat > README.md <<'EOF'
 # Auto Update Repo
 
 Repo ini auto update tiap 1 jam via GitHub Actions.
+
+## Log
 EOF
 fi
 
+if ! grep -q '^## Log$' README.md; then
+  printf "\n## Log\n" >> README.md
+fi
+
 {
-  echo ""
-  echo "## Log"
   echo "- $EMOJI_README **$TS** — \`$RAND\`"
   echo "  > \"${QUOTE_LINE}\""
 } >> README.md
 
+# --- tugas.txt: append terus ---
 if [ ! -f tugas.txt ]; then
   echo "tugas:" > tugas.txt
 fi
