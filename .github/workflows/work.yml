@@ -14,11 +14,13 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.PAT_PAT }}
 
-      - name: Setup git
+      - name: Setup git (your identity)
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config user.name "${{ secrets.GH_NAME }}"
+          git config user.email "${{ secrets.GH_MAIL }}"
 
       - name: Run updater
         run: |
@@ -28,7 +30,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          git add README.md tugas.txt .cache
+          git add README.md tugas.txt .cache .github/scripts/hourly_update.sh
 
           if git diff --cached --quiet; then
             echo "No changes to commit."

@@ -8,10 +8,10 @@ EMOJIS=("✨" "🔥" "🌿" "⚡" "🌙" "🧠" "🛠️" "📌" "🎲" "🚀" "
 pick_emoji() { printf "%s" "${EMOJIS[$(( RANDOM % ${#EMOJIS[@]} ))]}"; }
 
 CACHE_DIR=".cache"
-QUOTES_CACHE="$CACHE_DIR/quotes_cache.txt"       # 1 quote per line: "text — author"
-QUOTES_META="$CACHE_DIR/quotes_cache_meta.txt"   # epoch timestamp
-README_LOG="$CACHE_DIR/readme_log.txt"           # disimpan max 5 entry
-TTL_SECONDS=$(( 24 * 60 * 60 ))                  # refresh quotes 1x/24 jam
+QUOTES_CACHE="$CACHE_DIR/quotes_cache.txt"
+QUOTES_META="$CACHE_DIR/quotes_cache_meta.txt"
+README_LOG="$CACHE_DIR/readme_log.txt"
+TTL_SECONDS=$(( 24 * 60 * 60 ))  # refresh quotes 1x/24 jam
 
 mkdir -p "$CACHE_DIR"
 [ -f "$QUOTES_CACHE" ] || > "$QUOTES_CACHE"
@@ -31,8 +31,6 @@ fetch_zenquotes() {
   resp="$(curl -fsSL --retry 1 --retry-delay 1 --max-time 8 \
     "https://zenquotes.io/api/random" || true)"
 
-  # Format ZenQuotes normal: [ {"q":"...","a":"...","h":"..."} ]
-  # Pakai jq biar stabil, fallback kalau parse gagal
   echo "$resp" | jq -r '.[0] | "\(.q // "Keep going.") — \(.a // "Unknown")"' 2>/dev/null \
     || echo "Keep going. — Unknown"
 }
@@ -42,7 +40,6 @@ if [ "$need_refresh" -eq 1 ]; then
   tmp="$QUOTES_CACHE.tmp"
   > "$tmp"
 
-  # Biar cepat: isi 10 quotes aja
   for _ in $(seq 1 10); do
     line="$(fetch_zenquotes)"
     [ -n "$line" ] && echo "$line" >> "$tmp"
@@ -67,9 +64,7 @@ fi
 EMOJI_README="$(pick_emoji)"
 EMOJI_TUGAS="$(pick_emoji)"
 
-# -------------------------
-# README: replace tiap run, log tahan 5 entry
-# -------------------------
+# --- README replace, keep last 5 entries ---
 ENTRY_FILE="$CACHE_DIR/_entry.tmp"
 cat > "$ENTRY_FILE" <<EOF
 $EMOJI_README $TS — $RAND
@@ -77,10 +72,8 @@ $EMOJI_README $TS — $RAND
 
 EOF
 
-# append entry baru ke log file
 cat "$ENTRY_FILE" >> "$README_LOG"
 
-# keep last 5 blocks (block dipisah blank line)
 awk '
   BEGIN{RS=""; ORS="\n\n"}
   {blocks[++n]=$0}
@@ -90,7 +83,6 @@ awk '
   }
 ' "$README_LOG" > "$README_LOG.tmp" && mv "$README_LOG.tmp" "$README_LOG"
 
-# render README (overwrite)
 cat > README.md <<EOF
 # Auto Update Repo
 
@@ -103,9 +95,7 @@ EOF
 
 rm -f "$ENTRY_FILE" || true
 
-# -------------------------
-# tugas.txt: append terus
-# -------------------------
+# --- tugas.txt append ---
 if [ ! -f tugas.txt ]; then
   echo "tugas:" > tugas.txt
 fi
