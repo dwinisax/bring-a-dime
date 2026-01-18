@@ -7,64 +7,90 @@ RAND="$(openssl rand -hex 4)"
 EMOJIS=("✨" "🔥" "🌿" "⚡" "🌙" "🧠" "🛠️" "📌" "🎲" "🚀" "💡" "🧩" "🍀" "🎯" "🕰️")
 pick_emoji() { printf "%s" "${EMOJIS[$(( RANDOM % ${#EMOJIS[@]} ))]}"; }
 
+EMOJI_README="$(pick_emoji)"
+EMOJI_TUGAS="$(pick_emoji)"
+
+# -------------------------
+# Quotes cache: refresh per hari (UTC) + no-repeat queue
+# -------------------------
 CACHE_DIR=".cache"
-QUOTES_CACHE="$CACHE_DIR/quotes_cache.txt"
-QUOTES_META="$CACHE_DIR/quotes_cache_meta.txt"
-README_LOG="$CACHE_DIR/readme_log.txt"
-TTL_SECONDS=$(( 24 * 60 * 60 ))  # refresh quotes 1x/24 jam
+QUOTES_CACHE="$CACHE_DIR/quotes_cache.txt"        # master quotes (unik)
+QUOTES_DAY="$CACHE_DIR/quotes_cache_day.txt"      # YYYY-MM-DD (UTC)
+QUOTES_QUEUE="$CACHE_DIR/quotes_queue.txt"        # shuffled list dipakai 1-1
+TODAY_UTC="$(date -u '+%Y-%m-%d')"
 
 mkdir -p "$CACHE_DIR"
 [ -f "$QUOTES_CACHE" ] || > "$QUOTES_CACHE"
-[ -f "$QUOTES_META" ]  || echo "0" > "$QUOTES_META"
-[ -f "$README_LOG" ]   || > "$README_LOG"
-
-now_epoch="$(date -u +%s)"
-last_epoch="$(cat "$QUOTES_META" 2>/dev/null || echo 0)"
-
-need_refresh=1
-if [ -s "$QUOTES_CACHE" ] && [ $(( now_epoch - last_epoch )) -lt "$TTL_SECONDS" ]; then
-  need_refresh=0
-fi
+[ -f "$QUOTES_DAY" ]   || echo "" > "$QUOTES_DAY"
+[ -f "$QUOTES_QUEUE" ] || > "$QUOTES_QUEUE"
 
 fetch_zenquotes() {
   local resp
-  resp="$(curl -fsSL --retry 1 --retry-delay 1 --max-time 8 \
+  resp="$(curl -fsSL --retry 1 --retry-delay 1 --max-time 6 \
     "https://zenquotes.io/api/random" || true)"
 
-  echo "$resp" | jq -r '.[0] | "\(.q // "Keep going.") — \(.a // "Unknown")"' 2>/dev/null \
-    || echo "Keep going. — Unknown"
+  # ZenQuotes: [ {"q":"...","a":"...","h":"..."} ]
+  # jq parse -> "quote — author", fallback blank (biar caller decide)
+  echo "$resp" | jq -r '.[0] | "\(.q // "") — \(.a // "Unknown")"' 2>/dev/null \
+    | sed 's/[[:space:]]\+$//' \
+    | grep -v '^ — ' \
+    || true
 }
 
-if [ "$need_refresh" -eq 1 ]; then
-  echo "Refreshing quote cache..."
+LAST_DAY="$(cat "$QUOTES_DAY" 2>/dev/null || echo "")"
+MIN_CACHE_LINES=30
+CUR_LINES="$(wc -l < "$QUOTES_CACHE" 2>/dev/null || echo 0)"
+
+if [ "$LAST_DAY" != "$TODAY_UTC" ] || [ "$CUR_LINES" -lt "$MIN_CACHE_LINES" ]; then
+  echo "Refreshing daily quote cache for $TODAY_UTC..."
   tmp="$QUOTES_CACHE.tmp"
   > "$tmp"
 
-  for _ in $(seq 1 10); do
-    line="$(fetch_zenquotes)"
+  # ambil 40 quotes (cukup buat variasi 1 hari)
+  for _ in $(seq 1 40); do
+    line="$(fetch_zenquotes || true)"
     [ -n "$line" ] && echo "$line" >> "$tmp"
   done
 
   if [ -s "$tmp" ]; then
-    mv "$tmp" "$QUOTES_CACHE"
-    echo "$now_epoch" > "$QUOTES_META"
+    # gabung cache lama + baru, hapus kosong, unikkan
+    cat "$QUOTES_CACHE" "$tmp" \
+      | sed '/^[[:space:]]*$/d' \
+      | awk '!seen[$0]++' > "$QUOTES_CACHE.new"
+    mv "$QUOTES_CACHE.new" "$QUOTES_CACHE"
+    echo "$TODAY_UTC" > "$QUOTES_DAY"
   else
-    echo "WARN: quote cache refresh failed; keep existing cache."
-    rm -f "$tmp" || true
+    echo "WARN: failed to fetch new quotes; keeping existing cache."
   fi
-else
-  echo "Using cached quotes."
+
+  rm -f "$tmp" || true
+
+  # rebuild queue: shuffle master cache
+  if [ -s "$QUOTES_CACHE" ]; then
+    shuf "$QUOTES_CACHE" > "$QUOTES_QUEUE" || true
+  fi
 fi
 
+# kalau queue kosong, rebuild
+if [ ! -s "$QUOTES_QUEUE" ] && [ -s "$QUOTES_CACHE" ]; then
+  shuf "$QUOTES_CACHE" > "$QUOTES_QUEUE" || true
+fi
+
+# pop 1 quote dari queue
 QUOTE_LINE="Keep going. — Unknown"
-if [ -s "$QUOTES_CACHE" ]; then
+if [ -s "$QUOTES_QUEUE" ]; then
+  QUOTE_LINE="$(head -n 1 "$QUOTES_QUEUE")"
+  tail -n +2 "$QUOTES_QUEUE" > "$QUOTES_QUEUE.tmp" && mv "$QUOTES_QUEUE.tmp" "$QUOTES_QUEUE"
+elif [ -s "$QUOTES_CACHE" ]; then
   QUOTE_LINE="$(shuf -n 1 "$QUOTES_CACHE")"
 fi
 
-EMOJI_README="$(pick_emoji)"
-EMOJI_TUGAS="$(pick_emoji)"
+# -------------------------
+# README: replace tiap run, log tahan 5 entry
+# -------------------------
+README_LOG="$CACHE_DIR/readme_log.txt"
+[ -f "$README_LOG" ] || > "$README_LOG"
 
-# --- README replace, keep last 5 entries ---
 ENTRY_FILE="$CACHE_DIR/_entry.tmp"
 cat > "$ENTRY_FILE" <<EOF
 $EMOJI_README $TS — $RAND
@@ -74,6 +100,7 @@ EOF
 
 cat "$ENTRY_FILE" >> "$README_LOG"
 
+# keep last 5 blocks (block dipisah blank line)
 awk '
   BEGIN{RS=""; ORS="\n\n"}
   {blocks[++n]=$0}
@@ -83,6 +110,7 @@ awk '
   }
 ' "$README_LOG" > "$README_LOG.tmp" && mv "$README_LOG.tmp" "$README_LOG"
 
+# render README (overwrite)
 cat > README.md <<EOF
 # Auto Update Repo
 
@@ -95,7 +123,9 @@ EOF
 
 rm -f "$ENTRY_FILE" || true
 
-# --- tugas.txt append ---
+# -------------------------
+# tugas.txt: append terus
+# -------------------------
 if [ ! -f tugas.txt ]; then
   echo "tugas:" > tugas.txt
 fi
