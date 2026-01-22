@@ -1,6 +1,3 @@
-🎯 2026-01-21 21:00:32 UTC — d28f0a55
-"Power is not what we do but what we do not - hasty and unwise actions that we repeat every day and which ultimately bring us into trouble. — Robert Greene"
-
 ✨ 2026-01-21 22:55:42 UTC — 28ee7934
 "Sometimes things become possible if we want them bad enough. — T.S. Eliot"
 
@@ -12,4 +9,7 @@
 
 ⚡ 2026-01-22 05:54:43 UTC — e0959870
 "In the sky there are no tracks. Outside there is no recluse. There are no conditioned things that are eternal. There is no instability in the Buddhas. — The Buddha"
+
+⚡ 2026-01-22 07:02:57 UTC — d9271a05
+"Thinking is difficult, that's why most people judge. — Carl Jung"
 
