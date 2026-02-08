@@ -132,7 +132,19 @@ tac "$README_LOG" | awk 'BEGIN{RS=""; ORS="\n\n"} NR<=5' | tac > "$README_LOG.tm
 mv "$README_LOG.tmp" "$README_LOG"
 
 # OPSI 2: Visual Tabel untuk README
-LOG_TABLE_ROWS=$(awk 'BEGIN{RS=""; FS=" | "} {print "| " $1 " | `" $2 "` | " $3 " |"}' "$README_LOG")
+LOG_TABLE_ROWS=$(awk 'BEGIN{RS=""; ORS="\n"} {
+  p1 = index($0, " | ")
+  temp = substr($0, p1 + 3)
+  p2 = index(temp, " | ")
+  
+  col1 = substr($0, 1, p1 - 1)
+  col2 = substr(temp, 1, p2 - 1)
+  col3 = substr(temp, p2 + 3)
+  
+  gsub(/\n/, "", col3)
+  
+  printf "| %s | `%s` | %s |\n", col1, col2, col3
+}' "$README_LOG")
 
 cat > README.md <<EOF
 # Auto Update Repo
