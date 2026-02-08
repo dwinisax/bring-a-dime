@@ -32,8 +32,6 @@ LAST_DAY="$(cat "$QUOTES_DAY" 2>/dev/null || echo "")"
 # Quote fetchers
 # -------------------------
 fetch_zenquotes() {
-  # ZenQuotes JSON: [ {"q":"...","a":"...","h":"..."} ]
-  # NOTE: rate limit default 5/30s/IP => nanti kita throttle pas daily refresh :contentReference[oaicite:3]{index=3}
   local resp
   resp="$(curl -fsSL --retry 1 --retry-delay 1 --max-time 8 \
     "https://zenquotes.io/api/random" || true)"
@@ -45,13 +43,10 @@ fetch_zenquotes() {
 }
 
 fetch_quotable_insecure() {
-  # Quotable cert reportedly expired :contentReference[oaicite:4]{index=4}
-  # User request: ignore SSL for fallback => -k/--insecure
   local resp
   resp="$(curl -kfsSL --retry 1 --retry-delay 1 --max-time 8 \
     "https://api.quotable.io/random" || true)"
 
-  # JSON: { "content": "...", "author": "..." }
   echo "$resp" | jq -r '"\(.content // "") — \(.author // "Unknown")"' 2>/dev/null \
     | sed 's/[[:space:]]\+$//' \
     | grep -v '^ — ' \
@@ -59,7 +54,6 @@ fetch_quotable_insecure() {
 }
 
 dedupe_cache() {
-  # buang blank + dedupe preserve order
   sed '/^[[:space:]]*$/d' "$QUOTES_CACHE" | awk '!seen[$0]++' > "$QUOTES_CACHE.tmp"
   mv "$QUOTES_CACHE.tmp" "$QUOTES_CACHE"
 }
@@ -78,28 +72,23 @@ rebuild_queue() {
 if [ "$LAST_DAY" != "$TODAY_UTC" ]; then
   echo "New UTC day detected: $LAST_DAY -> $TODAY_UTC. Refreshing quote cache..."
 
-  # target quotes per day (bisa kamu naikkan)
-  # ZenQuotes aman kalau 5 request dengan jeda 7 detik (hindari 429) :contentReference[oaicite:6]{index=6}
   ZEN_N=5
   QUOTABLE_N=5
 
   tmp="$CACHE_DIR/new_quotes.tmp"
   > "$tmp"
 
-  # 1) ZenQuotes (throttled)
   for _ in $(seq 1 "$ZEN_N"); do
     q="$(fetch_zenquotes || true)"
     [ -n "$q" ] && echo "$q" >> "$tmp"
     sleep 7
   done
 
-  # 2) Fallback: Quotable insecure (no sleep needed)
   for _ in $(seq 1 "$QUOTABLE_N"); do
     q="$(fetch_quotable_insecure || true)"
     [ -n "$q" ] && echo "$q" >> "$tmp"
   done
 
-  # Merge into cache if we got anything
   if [ -s "$tmp" ]; then
     cat "$QUOTES_CACHE" "$tmp" >> "$QUOTES_CACHE.merged"
     mv "$QUOTES_CACHE.merged" "$QUOTES_CACHE"
@@ -109,16 +98,10 @@ if [ "$LAST_DAY" != "$TODAY_UTC" ]; then
   fi
 
   rm -f "$tmp" || true
-
-  # Mark day + rebuild queue (fresh order)
   echo "$TODAY_UTC" > "$QUOTES_DAY"
   rebuild_queue
-else
-  # Same day: DO NOT refresh (per request)
-  :
 fi
 
-# If queue empty (e.g., first run), build it
 if [ ! -s "$QUOTES_QUEUE" ]; then
   rebuild_queue
 fi
@@ -133,34 +116,36 @@ elif [ -s "$QUOTES_CACHE" ]; then
 fi
 
 # -------------------------
-# README: replace each run, keep last 5 entries
+# README & Log (IMPROVED SECTION)
 # -------------------------
 ENTRY_FILE="$CACHE_DIR/_entry.tmp"
+# Format entry: Emoji Waktu | ID | Quote
 cat > "$ENTRY_FILE" <<EOF
-$EMOJI_README $TS — $RAND
-"$QUOTE_LINE"
+$EMOJI_README $TS | $RAND | "$QUOTE_LINE"
 
 EOF
 
 cat "$ENTRY_FILE" >> "$README_LOG"
 
-awk '
-  BEGIN{RS=""; ORS="\n\n"}
-  {blocks[++n]=$0}
-  END{
-    start=(n>5)? n-5+1 : 1
-    for(i=start;i<=n;i++) print blocks[i]
-  }
-' "$README_LOG" > "$README_LOG.tmp" && mv "$README_LOG.tmp" "$README_LOG"
+# OPSI 1: Log Rolling (Ambil 5 paragraf terakhir dengan tac)
+tac "$README_LOG" | awk 'BEGIN{RS=""; ORS="\n\n"} NR<=5' | tac > "$README_LOG.tmp"
+mv "$README_LOG.tmp" "$README_LOG"
+
+# OPSI 2: Visual Tabel untuk README
+LOG_TABLE_ROWS=$(awk 'BEGIN{RS=""; FS=" | "} {print "| " $1 " | `" $2 "` | " $3 " |"}' "$README_LOG")
 
 cat > README.md <<EOF
 # Auto Update Repo
 
 Repo ini auto update tiap 1 jam via GitHub Actions.
 
-Log
+### 🕒 Log Aktivitas (5 Terakhir)
+| Waktu (UTC) | ID Sesi | Pesan / Kutipan |
+| :--- | :--- | :--- |
+$LOG_TABLE_ROWS
 
-$(cat "$README_LOG")
+---
+*Terakhir dijalankan: $TS*
 EOF
 
 rm -f "$ENTRY_FILE" || true
