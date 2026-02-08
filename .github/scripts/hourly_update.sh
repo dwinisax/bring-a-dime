@@ -100,6 +100,9 @@ if [ "$LAST_DAY" != "$TODAY_UTC" ]; then
   rm -f "$tmp" || true
   echo "$TODAY_UTC" > "$QUOTES_DAY"
   rebuild_queue
+else
+  # Same day: DO NOT refresh (per request)
+  :
 fi
 
 if [ ! -s "$QUOTES_QUEUE" ]; then
