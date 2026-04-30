@@ -2,6 +2,8 @@
 set -euo pipefail
 
 TS="$(date -u '+%Y-%m-%d %H:%M:%S UTC')"
+TODAY_UTC="$(date -u '+%Y-%m-%d')"
+CURRENT_MONTH_UTC="$(date -u '+%Y-%m')"
 RAND="$(openssl rand -hex 4)"
 
 EMOJIS=("✨" "🔥" "🌿" "⚡" "🌙" "🧠" "🛠️" "📌" "🎲" "🚀" "💡" "🧩" "🍀" "🎯" "🕰️")
@@ -18,14 +20,60 @@ QUOTES_CACHE="$CACHE_DIR/quotes_cache.txt"        # master list (unik)
 QUOTES_DAY="$CACHE_DIR/quotes_day.txt"            # YYYY-MM-DD (UTC) terakhir refresh
 QUOTES_QUEUE="$CACHE_DIR/quotes_queue.txt"        # shuffled queue (dipakai 1-1)
 README_LOG="$CACHE_DIR/readme_log.txt"            # last 5 entries
+CACHE_MONTH="$CACHE_DIR/cache_month.txt"
 
 mkdir -p "$CACHE_DIR"
+
 [ -f "$QUOTES_CACHE" ] || > "$QUOTES_CACHE"
 [ -f "$QUOTES_DAY" ]   || echo "" > "$QUOTES_DAY"
 [ -f "$QUOTES_QUEUE" ] || > "$QUOTES_QUEUE"
 [ -f "$README_LOG" ]   || > "$README_LOG"
+[ -f "$CACHE_MONTH" ]  || echo "" > "$CACHE_MONTH"
 
-TODAY_UTC="$(date -u '+%Y-%m-%d')"
+LAST_CACHE_MONTH="$(cat "$CACHE_MONTH" 2>/dev/null || echo "")"
+
+# -------------------------
+# Full monthly clean
+# -------------------------
+if [ "$LAST_CACHE_MONTH" != "$CURRENT_MONTH_UTC" ]; then
+  echo "New UTC month detected: $LAST_CACHE_MONTH -> $CURRENT_MONTH_UTC. Cleaning cache/logs..."
+
+  rm -f "$CACHE_DIR"/*.tmp || true
+  rm -f "$CACHE_DIR"/*.merged || true
+  > "$QUOTES_CACHE"
+  > "$QUOTES_QUEUE"
+  > "$README_LOG"
+  echo "" > "$QUOTES_DAY"
+  echo "$CURRENT_MONTH_UTC" > "$CACHE_MONTH"
+
+  if [ -f tugas.txt ]; then
+    echo "tugas:" > tugas.txt
+  fi
+
+  cat > README.md <<EOF
+# Auto Update Repo
+
+Repo ini auto update tiap 1 jam via GitHub Actions.
+
+### 🕒 Log Aktivitas (5 Terakhir)
+| Waktu (UTC) | ID Sesi | Pesan / Kutipan |
+| :--- | :--- | :--- |
+
+---
+*Terakhir dijalankan: $TS*
+EOF
+fi
+
+# -------------------------
+# Force clean readme_log.txt if >= 200 KB
+# -------------------------
+README_LOG_SIZE="$(wc -c < "$README_LOG" 2>/dev/null || echo 0)"
+
+if [ "$README_LOG_SIZE" -ge 204800 ]; then
+  echo "readme_log.txt reached 200 KB. Cleaning it..."
+  > "$README_LOG"
+fi
+
 LAST_DAY="$(cat "$QUOTES_DAY" 2>/dev/null || echo "")"
 
 # -------------------------
@@ -129,6 +177,14 @@ $EMOJI_README $TS | $RAND | "$QUOTE_LINE"
 EOF
 
 cat "$ENTRY_FILE" >> "$README_LOG"
+
+# Kalau setelah append jadi >= 200 KB, bersihkan total dan mulai dari entry baru
+README_LOG_SIZE="$(wc -c < "$README_LOG" 2>/dev/null || echo 0)"
+
+if [ "$README_LOG_SIZE" -ge 204800 ]; then
+  > "$README_LOG"
+  cat "$ENTRY_FILE" >> "$README_LOG"
+fi
 
 # OPSI 1: Log Rolling hemat memori
 tac "$README_LOG" | awk 'BEGIN{RS=""; ORS="\n\n"} NR<=5' | tac > "$README_LOG.tmp"
