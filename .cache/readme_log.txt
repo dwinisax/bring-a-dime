@@ -102,3 +102,4 @@
 ✨ 2026-06-13 17:13:53 UTC | bc3f3554 | "Fear is stupid. So are regrets. — Marilyn Monroe"
 ⚡ 2026-06-13 19:11:42 UTC | 761ef409 | "I am thankful to all those who said no. It's because of them, I did it myself. — Wayne Dyer"
 🔥 2026-06-13 21:04:21 UTC | b9547285 | "It is dangerous to be right in matters on which the established authorities are wrong. — Voltaire"
+📌 2026-06-13 22:55:47 UTC | 08e1eebb | "Fear of death is fear of surrender to Infinity. Learn to surrender, to exist at Infinity while alive, and fear of death dissolves. — Adi Da Samraj"
